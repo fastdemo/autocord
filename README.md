@@ -5,7 +5,7 @@ Repatches BetterDiscord or Vencord on every Discord update, so you don't have to
 
 ## Highlights
 
-Autocord is a lightweight CLI + background watcher that reinstalls BetterDiscord or Vencord after every update for your Discord client, automatically. Whenever Discord auto-updates and wipes the patch, Autocord detects the new version and re-patches it automatically.
+Autocord is a lightweight CLI + background watcher for macOS that reinstalls BetterDiscord or Vencord after every update for your Discord client, automatically. Whenever Discord auto-updates and wipes the patch, Autocord detects the new version and re-patches it automatically.
 
 ## Preview
 
@@ -14,8 +14,8 @@ Autocord is a lightweight CLI + background watcher that reinstalls BetterDiscord
 ## Features
 
 * **Update-proof Vencord**: A `launchd` agent watches both the live `.app` bundle and the Application Support folders (Discord replaces the bundle via ShipIt on every update), debounces the flurry of file writes, and re-patches only when the version actually changed.
-* **One command**: `autocord config`, `autocord install`, `autocord status`, `autocord logs`, `autocord patch` — a single surface over the watcher, trigger, and installer scripts.
-* **BetterDiscord support**: BetterDiscord is a real selectable mod target — same interface as Vencord, patching via the official `bdcli` (`resources/app/` shadow + preserved `betterdiscord.app.asar`, exactly like upstream's own installer). Dry-run by default; live mode needs both config arming and a per-run `--live` flag.
+* **CLI interfave**: `autocord config`, `autocord install`, `autocord status`, `autocord logs`, `autocord patch` - terminal commands to monitor the watcher, trigger, and installer scripts.
+* **BetterDiscord support**: BetterDiscord can be patched just like Vencord via the official `bdcli` (`resources/app/` shadow + preserved `betterdiscord.app.asar`, exactly like upstream's own installer). Dry-run by default; live mode needs both config arming and a per-run `--live` flag.
 * **Zero-setup installer handling**: The Vencord installer CLI has no prebuilt macOS binary, so Autocord finds it (known locations, then `$PATH`) or builds it from source automatically. You never learn Go is involved.
 * **Terminal-only**: Everything runs in your terminal and the background agent. No GUI, no system-wide changes.
 * **Lightweight**: Plain Node.js with zero dependencies. Just link it and forget it (until Discord updates, when you'll be glad you did).
@@ -143,8 +143,8 @@ State (last successfully patched version per channel) lives at `~/.local/share/v
 
 * **`autocord: command not found`** → Make sure you ran `npm link` inside the Autocord folder.
 * **No config yet** → Run `autocord config` first; `autocord install` refuses without one.
-* **Installer missing** → Run `autocord install` — it builds the Vencord installer CLI from source automatically instead of asking you for a path.
-* **Discord must be quit to patch** → The trigger quits it gracefully first (`tell application … to quit`, `pkill` fallback). Unsaved state like an unsent draft can be lost — same as manual patching.
+* **Installer missing** → Run `autocord install` as it builds the Vencord installer CLI from source automatically instead of asking you for a path.
+* **Discord must be quit to patch** → The trigger quits it gracefully first (`tell application … to quit`, `pkill` fallback). Unsaved state like an unsent draft can be lost, same as manual patching.
 * **Discord stayed closed after patching** → Relaunch is opt-in; set it with `autocord config --relaunch true`.
 * **Nothing happens on update** → Only configured `channels` are watched; re-run `autocord install` after changing channels to regenerate `WatchPaths`.
 * **Patch runs overlap** → Overlapping wakes exit early by design; the next wake (or login) picks up missed work from the state file.
@@ -207,7 +207,7 @@ State:
 
 * Node.js 22+
 * macOS (Windows port in progress — see above)
-* Discord (stable, PTB, Canary, and/or Development)
+* Discord (Stable, PTB, Canary, and/or Development)
 
 ## License
 
@@ -215,6 +215,6 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Disclaimer
 
-Autocord is not affiliated with Discord, Vencord, or BetterDiscord. Patching a client mod can break when Discord ships changes *(and at your own risk, of course).* It's completely open-source and intended for personal use.
+Autocord is not affiliated with Discord, Vencord, nor BetterDiscord. The watcher itself does not break any of Discord's TOS, however you can never be so certain. It's completely open-source and mostly intended for personal use.
 
 Made with love by **@fastdemo** <3

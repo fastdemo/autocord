@@ -58,19 +58,36 @@ depends on them:
 
 ## Setup
 
-Prerequisites: macOS, Node ≥ 18.
+Prerequisites: macOS (Windows port in progress — see below), Node.js 18+.
+
+**Easiest — one line, no dev setup assumed:**
 
 ```bash
-# 1. Build the Vencord Installer CLI (no prebuilt macOS binary exists)
-brew install go
-git clone https://github.com/Vencord/Installer
-cd Installer && go build -tags cli -o "$HOME/bin/VencordInstallerCli-darwin"
-cd -
+curl -fsSL https://raw.githubusercontent.com/fastdemo/autocord/main/install.sh | bash
+# checks Node (auto-installs via Homebrew on macOS, otherwise links you to
+# nodejs.org), installs the CLI, and walks straight into `autocord config`.
+# Then: autocord install
+```
 
-# 2. Install this tool and set it up — three commands, done:
+**Or straight from npm** (needs Node 18+ already):
+
+```bash
+npm install -g autocord-cli
+autocord config     # prompts: channels, relaunch, mod target
+autocord install    # sets up the installer if needed, then the LaunchAgent
+```
+
+> Status: `autocord-cli` is new — if `npm install -g autocord-cli` 404s,
+> the package hasn't been published yet; use the one-liner above (it falls
+> back to a source install automatically) or build from source below.
+
+**From source** (contributors / fallback):
+
+```bash
+git clone https://github.com/fastdemo/autocord && cd autocord
 npm install -g .
-autocord config     # prompts: channels, relaunch, installer path
-autocord install    # generate plist from config + launchctl load
+autocord config && autocord install   # re-run install after config edits
+```
 ```
 
 Day to day:
@@ -193,6 +210,30 @@ State file shape (`state.json`):
   "version": "0.0.3xx", "appPath": "/Applications/Discord.app",
   "timestamp": "2026-09-13T...", "mod": "vencord" } } }
 ```
+
+## Windows port (in progress)
+
+`src/platform/win32.js` implements the same interface as `darwin.js`
+(selected automatically in `src/platform/index.js`), so the trigger loop
+and mods are shared. Grounded in the Vencord Installer's own
+`find_discord_windows.go`:
+
+- Installs live at `%LOCALAPPDATA%\<Discord|DiscordPTB|DiscordCanary|DiscordDevelopment>\app-<ver>\resources\app.asar`
+  (patch marker: sibling `_app.asar`; newest `app-*` wins).
+- The Go CLI's `-install --location/--branch` flags are shared
+  cross-platform code (`cli.go`), so installer parity holds.
+- **Scheduler instead of launchd:** Task Scheduler has no filesystem-watch
+  trigger (`ONEVENT` only subscribes to Event Log channels), so Windows
+  polls — `schtasks /create /sc MINUTE /mo 30 /tn "Autocord Patch Check"`
+  running `node <repo>\src\trigger.js --config <config>` — which is correct
+  because the trigger is idempotent via the state file. See
+  `buildPollingTaskArgs()` for the exact command shape.
+
+Still needs one confirmation run on a real Windows box before calling it
+done: graceful `taskkill` behavior, `Update.exe --processStart` relaunch,
+and the WinRT toast notification (`sendNotification`). No Windows machine
+or VM was available for this pass — see the `DOCS-UNTESTED` markers in
+`src/platform/win32.js` for the exact list.
 
 ## Tests
 

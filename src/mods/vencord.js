@@ -39,11 +39,16 @@ function detect_install(channelInfo) {
 }
 
 function is_patched(installPath) {
-  // Mirrors find_discord_darwin.go ParseDiscord(): isPatched = _app.asar exists.
-  // Patched stub app.asar is tiny (~1KB, 2 files); stock is multi-MB. We only
-  // rely on the marker file to match upstream semantics.
+  // Mirrors upstream semantics (_app.asar marker exists) on both layouts:
+  // - macOS: installPath is Discord.app, marker at Contents/Resources/_app.asar
+  //   (see find_discord_darwin.go ParseDiscord).
+  // - Windows: installPath is the versioned app-<ver> dir, marker at
+  //   resources/_app.asar (see find_discord_windows.go ParseDiscord).
+  // Interface unchanged; the mod tolerates both patch layouts.
   try {
-    return fs.existsSync(path.join(installPath, 'Contents', 'Resources', '_app.asar'));
+    if (fs.existsSync(path.join(installPath, 'Contents', 'Resources', '_app.asar'))) return true;
+    if (fs.existsSync(path.join(installPath, 'resources', '_app.asar'))) return true;
+    return false;
   } catch {
     return false;
   }

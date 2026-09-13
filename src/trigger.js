@@ -27,7 +27,7 @@ const path = require('path');
 const { loadConfig } = require('./config');
 const { createLogger } = require('./logger');
 const { loadState, saveState } = require('./state');
-const platform = require('./platform/darwin');
+const platform = require('./platform/index').default; // darwin vs win32 swap point
 const { getMod } = require('./mods/index');
 
 function parseArgs(argv) {

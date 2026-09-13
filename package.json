@@ -1,17 +1,43 @@
 {
-  "name": "vencord-autopatch",
+  "name": "autocord-cli",
   "version": "1.0.1",
-  "description": "Auto-reinstall Vencord on Discord updates (macOS, launchd)",
+  "description": "Auto-reinstall Vencord on Discord updates (macOS launchd; Windows Task Scheduler support in progress)",
   "type": "commonjs",
   "bin": {
     "autocord": "./bin/autocord.js",
     "vencord-autopatch": "./src/trigger.js",
     "vencord-autopatch-configure": "./src/configure.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "scripts",
+    "launchd",
+    "config.sample.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastdemo/autocord.git"
+  },
+  "homepage": "https://github.com/fastdemo/autocord#readme",
+  "bugs": {
+    "url": "https://github.com/fastdemo/autocord/issues"
+  },
+  "keywords": [
+    "discord",
+    "vencord",
+    "betterdiscord",
+    "autopatch",
+    "macos",
+    "windows"
+  ],
   "scripts": {
     "test": "node --test \"test/*.test.js\""
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "license": "Apache-2.0"
 }

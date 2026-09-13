@@ -9,6 +9,7 @@
  * output styling (src/ui.js) — presentation only, no behavior.
  *
  *   autocord help                              this text
+ *   autocord --version                         installed version
  *   autocord config [--channels a,b ...]       configure (interactive or flags)
  *   autocord status                            config + agent + last patch results
  *   autocord install                           ensure installer, install agent
@@ -47,6 +48,7 @@ function helpBody() {
   return [`Usage: autocord <command> [options]`,
     '',
     cmd('help', 'Show this help'),
+    cmd('--version', 'Print the installed version'),
     cmd('config', 'Set channels, relaunch, mod target (interactive;'),
     `               ${ui.dim('or: --channels ptb,canary --relaunch false --mod betterdiscord)')}`,
     cmd('status', 'Show config, agent state, and last patch result per channel'),
@@ -120,6 +122,11 @@ function runBash(script, args, extraEnv) {
     env: { ...process.env, ...extraEnv },
   });
   process.exit(r.status ?? 1);
+}
+
+function cmdVersion() {
+  process.stdout.write(`${ui.version()}\n`);
+  process.exit(0);
 }
 
 function cmdHelp() {
@@ -314,6 +321,10 @@ async function main() {
     case '--help':
     case '-h':
       return cmdHelp();
+    case '--version':
+    case '-v':
+    case 'version':
+      return cmdVersion();
     case 'config':
       return cmdConfig(rest);
     case 'status':

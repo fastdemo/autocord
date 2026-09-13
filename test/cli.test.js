@@ -27,7 +27,7 @@ describe('autocord help', () => {
     for (const args of [[], ['help']]) {
       const r = run(...args);
       assert.equal(r.status, 0, `stderr: ${r.stderr}`);
-      for (const cmd of ['help', 'config', 'status', 'install', 'uninstall', 'patch', 'logs']) {
+      for (const cmd of ['help', '--version', 'config', 'status', 'install', 'uninstall', 'patch', 'logs']) {
         assert.match(r.stdout, new RegExp(`^\\s+${cmd}\\s+\\S`, 'm'), `help mentions ${cmd}`);
       }
     }
@@ -38,6 +38,15 @@ describe('autocord help', () => {
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /unknown command/);
     assert.match(r.stdout, /Usage: autocord/);
+  });
+
+  it('--version/-v print the package version', () => {
+    const expected = require('../package.json').version;
+    for (const args of [['--version'], ['-v'], ['version']]) {
+      const r = run(...args);
+      assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+      assert.equal(r.stdout.trim(), expected);
+    }
   });
 });
 

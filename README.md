@@ -60,34 +60,30 @@ depends on them:
 
 Prerequisites: macOS (Windows port in progress — see below), Node.js 18+.
 
-**Easiest — one line, no dev setup assumed:**
-
+1. Clone the repo:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fastdemo/autocord/main/install.sh | bash
-# checks Node (auto-installs via Homebrew on macOS, otherwise links you to
-# nodejs.org), installs the CLI, and walks straight into `autocord config`.
-# Then: autocord install
+git clone https://github.com/fastdemo/autocord.git
 ```
-
-**Or straight from npm** (needs Node 18+ already):
-
+2. Enter the directory:
 ```bash
-npm install -g autocord-cli
-autocord config     # prompts: channels, relaunch, mod target
-autocord install    # sets up the installer if needed, then the LaunchAgent
+cd autocord
 ```
-
-> Status: `autocord-cli` is new — if `npm install -g autocord-cli` 404s,
-> the package hasn't been published yet; use the one-liner above (it falls
-> back to a source install automatically) or build from source below.
-
-**From source** (contributors / fallback):
-
+3. Install dependencies:
 ```bash
-git clone https://github.com/fastdemo/autocord && cd autocord
-npm install -g .
-autocord config && autocord install   # re-run install after config edits
+npm install
 ```
+4. Link the command:
+```bash
+npm link
+```
+5. Confirm it's working:
+```bash
+autocord --version
+```
+6. Configure and install:
+```bash
+autocord config
+autocord install
 ```
 
 Day to day:

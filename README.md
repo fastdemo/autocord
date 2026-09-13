@@ -81,24 +81,6 @@ autocord config --channels stable,ptb --relaunch false
 autocord config --betterdiscord-dry-run false  # arm BD live mode (you flip this yourself)
 ```
 
-Sample `autocord status`:
-
-```
-╭────────────────────────────────╮
-│  Autocord (@fastdemo)          │
-│  macOS · Vencord Auto-Patcher  │
-╰────────────────────────────────╯
-
-config    /Users/khang/.config/vencord-autopatch/config.json
-channels  ptb
-relaunch  true
-mod       vencord
-
-ptb        ● Patched  0.0.260  ·  2026-09-13T06:15:52.197Z
-installer  ● ready (VencordInstallerCli-darwin)
-agent      ● Not loaded  (run 'autocord install')
-```
-
 Bump-test the watcher (fires the agent within seconds; watch `autocord logs`):
 
 ```bash

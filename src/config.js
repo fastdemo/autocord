@@ -80,11 +80,19 @@ function loadConfig(cliConfigPath) {
     throw new Error(`Invalid mod "${mod}". Valid: vencord, betterdiscord.`);
   }
 
+  // BetterDiscord live patching stays off unless explicitly armed here AND
+  // requested per-run with --live. Defaults to dry-run-only.
+  const betterdiscordDryRun = raw.betterdiscordDryRun === undefined ? true : raw.betterdiscordDryRun === true;
+  if (typeof raw.betterdiscordDryRun !== 'undefined' && typeof raw.betterdiscordDryRun !== 'boolean') {
+    throw new Error('Invalid betterdiscordDryRun: must be true or false.');
+  }
+
   return {
     configPath,
     configExists: fs.existsSync(configPath),
     channels,
     mod,
+    betterdiscordDryRun,
     installerCli: expandHome(raw.installerCli || '~/bin/VencordInstallerCli-darwin'),
     installerMode,
     relaunchDiscord: raw.relaunchDiscord === true,

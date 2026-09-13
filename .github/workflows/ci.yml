@@ -1,0 +1,76 @@
+name: ci
+
+# Validates the suite on macOS + Windows, and exercises the Windows-only
+# code paths that are safe on a shared runner (no Discord install, no
+# patching, everything cleaned up). Anything that needs a real Discord
+# install stays in docs/WINDOWS_TEST_CHECKLIST.md.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+
+  windows-probe:
+    # Real-OS validation of the DOCS-UNTESTED builders in
+    # src/platform/win32.js. Read-only or self-cleaning only.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: tasklist absent-case matches isDiscordRunning expectation
+        run: |
+          $out = tasklist /FI "IMAGENAME eq AutocordProbeDoesNotExist123.exe" /FO CSV /NH
+          $out | Write-Host
+          if ($out -notmatch 'No tasks are running') { throw 'unexpected tasklist output' }
+
+      - name: fake LOCALAPPDATA tree exercises newest-version selection on real WinFS
+        run: |
+          $lad = Join-Path $env:RUNNER_TEMP 'FakeLocalAppData'
+          foreach ($v in '1.0.9000','1.0.8999','1.0.9002') {
+            $res = Join-Path $lad "Discord\app-$v\resources"
+            New-Item -ItemType Directory -Force -Path $res | Out-Null
+            Set-Content -Path (Join-Path $res 'app.asar') -Value 'fake'
+          }
+          $env:LOCALAPPDATA = $lad
+          node -e "const w=require('./src/platform/win32.js'); const i=w.getChannelInfo('stable'); console.log(i.appPath, w.getCurrentVersion(i)); if (w.getCurrentVersion(i) !== '1.0.9002') process.exit(1)"
+
+      - name: trigger check-mode runs via the win32 platform layer
+        run: |
+          $cfg = @{ channels = @('stable'); debounceSeconds = 0; logLevel = 'error'; stateFile = (Join-Path $env:RUNNER_TEMP 's.json'); logDir = (Join-Path $env:RUNNER_TEMP 'logs') } | ConvertTo-Json
+          $cfgPath = Join-Path $env:RUNNER_TEMP 'ci-config.json'
+          Set-Content -Path $cfgPath -Value $cfg
+          node src/trigger.js --config $cfgPath --check
+
+      - name: schtasks round-trip on a dummy task (created, queried, run, deleted)
+        run: |
+          schtasks /create /sc MINUTE /mo 30 /tn "AutocordCIProbe" /tr "cmd /c exit 0" /f
+          if ($LASTEXITCODE -ne 0) { throw 'create failed' }
+          schtasks /query /tn "AutocordCIProbe"
+          if ($LASTEXITCODE -ne 0) { throw 'query failed' }
+
+      - name: schtasks cleanup (always)
+        if: always()
+        run: schtasks /delete /tn "AutocordCIProbe" /f
+
+      - name: toast snippet executes (observational — headless may suppress)
+        run: |
+          $toast = "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; $xml = New-Object Windows.Data.Xml.Dom.XmlDocument; $xml.LoadXml(\"<toast><visual><binding template='ToastGeneric'><text>Autocord CI</text><text>probe — safe to dismiss</text></binding></visual></toast>\"); [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Autocord').Show($xml);"
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $toast
+          echo "toast-exit=$LASTEXITCODE (nonzero on headless is a finding, not a failure)"

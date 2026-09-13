@@ -16,7 +16,7 @@ Autocord is a lightweight CLI + background watcher that keeps your Discord clien
 
 * **Update-proof Vencord**: A `launchd` agent watches both the live `.app` bundle and the Application Support folders (Discord replaces the bundle via ShipIt on every update), debounces the flurry of file writes, and re-patches only when the version actually changed.
 * **One command**: `autocord config`, `autocord install`, `autocord status`, `autocord logs`, `autocord patch` — a single surface over the watcher, trigger, and installer scripts.
-* **BetterDiscord dry-run**: BetterDiscord is a real selectable mod target, but patch runs for it only ever report what they *would* do — nothing is touched.
+* **BetterDiscord support**: BetterDiscord is a real selectable mod target — same interface as Vencord, patching via the official `bdcli` (`resources/app/` shadow + preserved `betterdiscord.app.asar`, exactly like upstream's own installer). Dry-run by default; live mode needs both config arming and a per-run `--live` flag.
 * **Zero-setup installer handling**: The Vencord installer CLI has no prebuilt macOS binary, so Autocord finds it (known locations, then `$PATH`) or builds it from source automatically. You never learn Go is involved.
 * **Terminal-only**: Everything runs in your terminal and the background agent. No GUI, no system-wide changes.
 * **Lightweight**: Plain Node.js with zero dependencies. Just link it and forget it (until Discord updates, when you'll be glad you did).
@@ -69,6 +69,7 @@ Run a patch check by hand:
 
 ```bash
 autocord patch --dry-run --channel ptb
+autocord patch --mod betterdiscord            # dry run (default for BD)
 autocord patch --force
 ```
 
@@ -76,8 +77,9 @@ Normal Autocord arguments work too:
 
 ```bash
 autocord patch --channel ptb
-autocord patch --mod betterdiscord
+autocord patch --mod betterdiscord --live   # BD live: needs betterdiscordDryRun:false first
 autocord config --channels stable,ptb --relaunch false
+autocord config --betterdiscord-dry-run false  # arm BD live mode (you flip this yourself)
 ```
 
 Sample `autocord status`:
@@ -126,7 +128,8 @@ Either `autocord config` (numbered prompts: channels, relaunch y/n, mod target) 
 | Key | Default | Meaning |
 |---|---|---|
 | `channels` | `["stable"]` | Which builds to watch: `stable`, `ptb`, `canary`, `development` |
-| `mod` | `"vencord"` | `vencord` (live patching) or `betterdiscord` (**dry-run only**) |
+| `mod` | `"vencord"` | `vencord` (live patching) or `betterdiscord` (dry-run default, live behind flag) |
+| `betterdiscordDryRun` | `true` | BD stays dry-run unless `false` **and** the run passes `--live` |
 | `relaunchDiscord` | `false` | Relaunch Discord after a successful patch, if it was running |
 | `installerCli` | `~/bin/VencordInstallerCli-darwin` | Manual override; normally auto-resolved → auto-built |
 | `installerMode` | `"location"` | `-install --location <appPath>`, or `--branch <channel>` |
@@ -150,7 +153,7 @@ State (last successfully patched version per channel) lives at `~/.local/share/v
 
 ## Windows
 
-`src/platform/win32.js` implements the same interface as `darwin.js` (auto-selected), so the trigger loop and mods are shared. Installs live at `%LOCALAPPDATA%\<Discord|DiscordPTB|DiscordCanary|DiscordDevelopment>\app-<ver>\resources\app.asar`, and Task Scheduler polls (`schtasks /create /sc MINUTE /mo 30`) since it has no filesystem-watch trigger. Still needs one confirmation run on a real Windows box (`taskkill` behavior, `Update.exe --processStart` relaunch, toast notification — see `DOCS-UNTESTED` markers).
+`src/platform/win32.js` implements the same interface as `darwin.js` (auto-selected), so the trigger loop and mods are shared. Installs live at `%LOCALAPPDATA%\<Discord|DiscordPTB|DiscordCanary|DiscordDevelopment>\app-<ver>\resources\app.asar`, and Task Scheduler polls (`schtasks /create /sc MINUTE /mo 30`) since it has no filesystem-watch trigger. CI (`.github/workflows/ci.yml`) exercises the safe subset on real `windows-latest` runners on every push: full suite, tasklist/schtasks round-trips, fake `%LOCALAPPDATA%` selection. Still needs one confirmation run on a real Windows box (`taskkill` behavior, `Update.exe --processStart` relaunch, toast notification — see `DOCS-UNTESTED` markers and `docs/WINDOWS_TEST_CHECKLIST.md`).
 
 ## Docs
 

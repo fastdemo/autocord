@@ -35,13 +35,14 @@ const CHANNEL_LIST = [...VALID_CHANNELS]; // stable, ptb, canary, development
 const MOD_LIST = ['vencord', 'betterdiscord'];
 
 function parseArgs(argv) {
-  const out = { config: null, channels: undefined, relaunch: undefined, mod: undefined, installerCli: undefined };
+  const out = { config: null, channels: undefined, relaunch: undefined, mod: undefined, bdDryRun: undefined, installerCli: undefined };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--config') out.config = argv[++i];
     else if (a === '--channels') out.channels = argv[++i];
     else if (a === '--relaunch') out.relaunch = argv[++i];
     else if (a === '--mod') out.mod = argv[++i];
+    else if (a === '--betterdiscord-dry-run') out.bdDryRun = argv[++i];
     else if (a === '--installer-cli') out.installerCli = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
     else throw new Error(`Unknown arg: ${a}`);
@@ -151,6 +152,8 @@ async function interactive(existing) {
     }
     if (mod === 'betterdiscord') {
       console.log('   BetterDiscord runs in dry-run mode: it reports what it would do, changes nothing.');
+      console.log('   Live patching stays off unless YOU arm it later:');
+      console.log('     autocord config --betterdiscord-dry-run false   (then per-run: autocord patch --live)');
     }
 
     // Hand the open session back so the caller can ask the last-resort
@@ -179,19 +182,20 @@ function saveConfig(configPath, values) {
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
-    console.log('Usage: configure.js [--config <path>] [--channels <a,b>] [--relaunch <true|false>] [--mod <name>] [--installer-cli <path>]');
+    console.log('Usage: configure.js [--config <path>] [--channels <a,b>] [--relaunch <true|false>] [--mod <name>] [--betterdiscord-dry-run <true|false>] [--installer-cli <path>]');
     console.log('  --installer-cli is a manual override; normally the installer is found/built automatically.');
     process.exit(0);
   }
   const { ensureInstallerCli } = require('./installer');
   const existing = loadConfig(args.config);
   let values;
-  const nonInteractive = args.channels !== undefined || args.relaunch !== undefined || args.mod !== undefined || args.installerCli !== undefined;
+  const nonInteractive = args.channels !== undefined || args.relaunch !== undefined || args.mod !== undefined || args.bdDryRun !== undefined || args.installerCli !== undefined;
   if (nonInteractive) {
     values = {};
     if (args.channels !== undefined) values.channels = parseChannels(args.channels);
     if (args.relaunch !== undefined) values.relaunchDiscord = parseRelaunch(args.relaunch);
     if (args.mod !== undefined) values.mod = parseMod(args.mod);
+    if (args.bdDryRun !== undefined) values.betterdiscordDryRun = parseRelaunch(args.bdDryRun);
     if (args.installerCli !== undefined) values.installerCli = expandHome(args.installerCli);
     // Nothing else: installer resolution happens at use time
     // (autocord install builds it with progress if missing).
@@ -218,7 +222,11 @@ async function main() {
   const saved = saveConfig(existing.configPath, values);
   console.log(`\nSaved ${existing.configPath}:`);
   const summary = { channels: saved.channels, relaunchDiscord: saved.relaunchDiscord, mod: saved.mod || 'vencord' };
-  if (summary.mod === 'betterdiscord') summary.mode = 'dry-run (no files touched)';
+  if (summary.mod === 'betterdiscord') {
+    summary.mode = saved.betterdiscordDryRun === false
+      ? 'LIVE ARMED — real patching only with per-run --live'
+      : 'dry-run (no files touched)';
+  }
   console.log(JSON.stringify(summary, null, 2));
 }
 

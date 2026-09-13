@@ -52,6 +52,25 @@ describe('configure parsers', () => {
   });
 });
 
+describe('configure betterdiscord dry-run flag', () => {
+  it('--betterdiscord-dry-run false arms live mode in the file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cfg-'));
+    const f = path.join(dir, 'config.json');
+    const r = spawnSync(process.execPath, [CONFIGURE, '--config', f, '--betterdiscord-dry-run', 'false'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.equal(loadConfig(f).betterdiscordDryRun, false);
+  });
+
+  it('rejects non-boolean values without touching the file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cfg-'));
+    const f = path.join(dir, 'config.json');
+    fs.writeFileSync(f, JSON.stringify({}));
+    const r = spawnSync(process.execPath, [CONFIGURE, '--config', f, '--betterdiscord-dry-run', 'maybe'], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0);
+    assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')), {});
+  });
+});
+
 describe('configure save', () => {
   it('saveConfig writes values and preserves unknown/future keys', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cfg-'));

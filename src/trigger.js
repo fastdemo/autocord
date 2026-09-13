@@ -12,10 +12,12 @@
  *      optionally relaunch; log everything; notify on failure.
  *
  * Usage:
- *   trigger.js [--config <path>] [--force] [--check|--dry-run] [--channel <name>] [--mod <name>]
+ *   trigger.js [--config <path>] [--force] [--check|--dry-run] [--live] [--channel <name>] [--mod <name>]
  *     --force    ignore state file, re-patch even if version unchanged
  *     --check    dry run: report what WOULD be done, change nothing
  *                (--dry-run is an alias; also forced for betterdiscord)
+ *     --live     allow live BetterDiscord patching, AND-gated with
+ *                betterdiscordDryRun:false in config (refuses otherwise)
  *     --channel  limit to one channel (default: all configured)
  *     --mod      mod target (default: config `mod`, else vencord)
  */
@@ -31,18 +33,38 @@ const platform = require('./platform/index').default; // darwin vs win32 swap po
 const { getMod } = require('./mods/index');
 
 function parseArgs(argv) {
-  const out = { config: null, force: false, check: false, channel: null, mod: null };
+  const out = { config: null, force: false, check: false, live: false, channel: null, mod: null };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--config') out.config = argv[++i];
     else if (a === '--force') out.force = true;
     else if (a === '--check' || a === '--dry-run') out.check = true;
+    else if (a === '--live') out.live = true;
     else if (a === '--channel') out.channel = argv[++i];
     else if (a === '--mod') out.mod = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
     else throw new Error(`Unknown arg: ${a}`);
   }
   return out;
+}
+
+/**
+ * BetterDiscord live gating (AND semantics — both required):
+ *   --live on this invocation AND betterdiscordDryRun:false in config.
+ * Everything else (including the launchd daemon, which never passes --live)
+ * is a dry run. Returns { live, refused } where refused carries the reason.
+ */
+function resolveBdLive(args, config) {
+  if (!args.live) return { live: false, refused: null };
+  if (config.betterdiscordDryRun !== false) {
+    return {
+      live: false,
+      refused:
+        'Live BetterDiscord patching was requested (--live) but betterdiscordDryRun is not false in config. ' +
+        'Flip it yourself with: autocord config --betterdiscord-dry-run false. Nothing was changed.',
+    };
+  }
+  return { live: true, refused: null };
 }
 
 function sleep(ms) {
@@ -121,15 +143,26 @@ function main() {
   const config = loadConfig(args.config);
   const log = createLogger({ logDir: config.logDir, logLevel: config.logLevel });
   const mod = getMod(args.mod || config.mod || 'vencord');
-  if (mod.name === 'betterdiscord' && !args.check) {
-    // Safety net (the `autocord patch` wrapper also enforces this):
-    // BetterDiscord is dry-run only until explicitly enabled.
-    log.warn('BetterDiscord target is dry-run only — forcing check mode (no files will be touched)');
-    args.check = true;
+  let bdLive = false;
+  if (mod.name === 'betterdiscord') {
+    const gate = resolveBdLive(args, config);
+    if (gate.refused) {
+      // Explicit --live without arming: refuse loudly, touch nothing.
+      log.error(gate.refused);
+      platform.sendNotification('Vencord Autopatch failed', gate.refused.slice(0, 200));
+      process.exit(1);
+    }
+    bdLive = gate.live;
+    if (!bdLive && !args.check) {
+      // Safety net (the `autocord patch` wrapper also enforces this):
+      // BetterDiscord defaults to dry-run; --live + arming opts in.
+      log.warn('BetterDiscord target is dry-run only — forcing check mode (no files will be touched)');
+      args.check = true;
+    }
   }
   const lockFile = path.join(path.dirname(config.stateFile), '.autopatch.lock');
 
-  log.info(`=== autopatch run (mod=${mod.name}, channels=${args.channel || config.channels.join(',')}) ===`);
+  log.info(`=== autopatch run (mod=${mod.name}${bdLive ? ', LIVE' : ''}, channels=${args.channel || config.channels.join(',')}) ===`);
   if (!config.configExists) {
     log.warn(`Config not found at ${config.configPath}; using defaults (stable, no relaunch)`);
   }
@@ -279,4 +312,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main: main, parseArgs: parseArgs };
+module.exports = { main: main, parseArgs: parseArgs, resolveBdLive: resolveBdLive };

@@ -80,15 +80,24 @@ describe('autocord status', () => {
 });
 
 describe('resolvePatchMode', () => {
-  it('betterdiscord always dry-runs, even with --force', () => {
-    assert.deepEqual(resolvePatchMode('betterdiscord', {}), { check: true, dryRun: true, forcedForMod: true });
-    assert.deepEqual(resolvePatchMode('betterdiscord', { force: true }), { check: true, dryRun: true, forcedForMod: true });
+  it('betterdiscord dry-runs by default, even with --force', () => {
+    assert.deepEqual(resolvePatchMode('betterdiscord', {}), { check: true, dryRun: true, live: false, forcedForMod: true, refused: null });
+    assert.deepEqual(resolvePatchMode('betterdiscord', { force: true }), { check: true, dryRun: true, live: false, forcedForMod: true, refused: null });
     assert.deepEqual(resolvePatchMode('betterdiscord', { dryRun: true }).forcedForMod, false);
   });
 
+  it('betterdiscord goes live only with --live AND an armed config', () => {
+    const live = resolvePatchMode('betterdiscord', { live: true }, { betterdiscordDryRun: false });
+    assert.equal(live.live, true);
+    assert.equal(live.check, false);
+    const refused = resolvePatchMode('betterdiscord', { live: true }, {});
+    assert.equal(refused.live, false);
+    assert.match(refused.refused, /betterdiscordDryRun/);
+  });
+
   it('vencord honors explicit flags only', () => {
-    assert.deepEqual(resolvePatchMode('vencord', {}), { check: false, dryRun: false, forcedForMod: false });
-    assert.deepEqual(resolvePatchMode('vencord', { dryRun: true }), { check: true, dryRun: true, forcedForMod: false });
+    assert.deepEqual(resolvePatchMode('vencord', {}), { check: false, dryRun: false, live: false, forcedForMod: false, refused: null });
+    assert.deepEqual(resolvePatchMode('vencord', { dryRun: true }), { check: true, dryRun: true, live: false, forcedForMod: false, refused: null });
   });
 });
 
@@ -191,5 +200,43 @@ describe('autocord logs', () => {
       try { process.kill(-child.pid, 'SIGKILL'); } catch {}
       await new Promise((resolve) => child.on('exit', resolve));
     }
+  });
+});
+
+describe('autocord patch live gating (betterdiscord)', () => {
+  it('--live without arming refuses loudly; live PTB untouched', () => {
+    const asar = '/Applications/Discord PTB.app/Contents/Resources/app.asar';
+    const before = fs.existsSync(asar) ? fs.statSync(asar).mtimeMs : null;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cli-'));
+    const cfg = path.join(dir, 'config.json');
+    fs.writeFileSync(cfg, JSON.stringify({ channels: ['ptb'], mod: 'betterdiscord', debounceSeconds: 0, logLevel: 'error', stateFile: path.join(dir, 's.json'), logDir: path.join(dir, 'logs') }));
+    const r = run('patch', '--config', cfg, '--channel', 'ptb', '--live');
+    assert.equal(r.status, 1, `stdout: ${r.stdout}\nstderr: ${r.stderr}`);
+    assert.match(r.stderr + r.stdout, /betterdiscordDryRun/);
+    if (before !== null) {
+      assert.equal(fs.statSync(asar).mtimeMs, before, 'live app.asar untouched');
+    }
+    assert.ok(!fs.existsSync(path.join(dir, 's.json')), 'no state written on refusal');
+  });
+
+  it('armed live mode delegates (canary: safe no-install path, exit 0)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cli-'));
+    const cfg = path.join(dir, 'config.json');
+    fs.writeFileSync(cfg, JSON.stringify({ channels: ['canary'], mod: 'betterdiscord', betterdiscordDryRun: false, debounceSeconds: 0, logLevel: 'error', stateFile: path.join(dir, 's.json'), logDir: path.join(dir, 'logs') }));
+    const r = run('patch', '--config', cfg, '--channel', 'canary', '--live');
+    assert.equal(r.status, 0, `stdout: ${r.stdout}\nstderr: ${r.stderr}`);
+    assert.match(r.stdout, /LIVE BetterDiscord patch/);
+  });
+
+  it('status shows LIVE ARMED vs dry-run from config', () => {
+    const armed = tmpConfig({ channels: ['ptb'], mod: 'betterdiscord', betterdiscordDryRun: false });
+    const r1 = run('status', '--config', armed);
+    assert.equal(r1.status, 0, r1.stderr);
+    assert.match(r1.stdout, /LIVE ARMED/);
+    const dry = tmpConfig({ channels: ['ptb'], mod: 'betterdiscord' });
+    const r2 = run('status', '--config', dry);
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.match(r2.stdout, /dry-run mode/);
+    assert.ok(!/LIVE ARMED/.test(r2.stdout));
   });
 });

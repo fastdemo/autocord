@@ -116,13 +116,15 @@ function title() {
 
 const SUBTITLE_VENCORD = 'macOS · Vencord Auto-Patcher';
 const SUBTITLE_BETTERDISCORD = 'macOS · BetterDiscord · dry-run mode';
+const SUBTITLE_BETTERDISCORD_ARMED = 'macOS · BetterDiscord · LIVE ARMED — requires --live';
 
-function subtitleForMod(mod) {
-  return mod === 'betterdiscord' ? SUBTITLE_BETTERDISCORD : SUBTITLE_VENCORD;
+function subtitleForMod(mod, liveArmed = false) {
+  if (mod === 'betterdiscord') return liveArmed ? SUBTITLE_BETTERDISCORD_ARMED : SUBTITLE_BETTERDISCORD;
+  return SUBTITLE_VENCORD;
 }
 
-function appHeader(mod, opts = {}) {
-  return headerBox(title(), subtitleForMod(mod), opts);
+function appHeader(mod, opts = {}, liveArmed = false) {
+  return headerBox(title(), subtitleForMod(mod, liveArmed), opts);
 }
 
 module.exports = {
@@ -146,4 +148,5 @@ module.exports = {
   subtitleForMod,
   SUBTITLE_VENCORD,
   SUBTITLE_BETTERDISCORD,
+  SUBTITLE_BETTERDISCORD_ARMED,
 };

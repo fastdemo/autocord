@@ -18,6 +18,13 @@
   // Both were verified in cli.go to skip the interactive prompt entirely.
   "installerMode": "location",
 
+  // Which mod to manage: "vencord" (live patching) or "betterdiscord".
+  // BetterDiscord runs dry-run only unless BOTH this is false AND a run
+  // passes --live (e.g. `autocord patch --mod betterdiscord --live`).
+  // The daemon never passes --live, so scheduled runs stay dry runs.
+  "mod": "vencord",
+  "betterdiscordDryRun": true,
+
   // If Discord is running, we quit it gracefully before patching (required:
   // patching a running install can fail/corrupt app.asar). If true AND Discord
   // was running before we quit it, relaunch it after a successful patch.

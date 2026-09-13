@@ -6,94 +6,146 @@
  *   is_patched(installPath)     -> boolean
  *   patch(...) / unpatch(...)   -> { ok, output }
  *
- * Ground truth (read-only inspection of this machine):
- * - BetterDiscord keeps its loader at
- *   ~/Library/Application Support/BetterDiscord/data/betterdiscord.asar
- *   plus per-channel state dirs (data/{stable,ptb,canary,development}).
- * - Like Vencord it patches the live bundle's Resources/app.asar, so
- *   detect_install is the same shape: Discord .app present with app.asar.
- * - is_patched heuristic: the BD loader asar exists AND the live app.asar
- *   references the loader bundle name ("betterdiscord.asar"). The bare word
- *   "betterdiscord" alone is NOT enough — stock Discord app.asar mentions it
- *   in Sentry denylists (verified on the stock 3.6MB bundle).
+ * Real mechanism (verified against BetterDiscord/Installer source, NOT memory):
+ * - BetterDiscord does NOT swap app.asar like Vencord. inject() preserves the
+ *   original as resources/betterdiscord.app.asar and drops a shadow
+ *   resources/app/ folder (package.json {"main":"./index.js"} + index.js
+ *   loader) that loads data/betterdiscord.asar, then requires the preserved
+ *   app. Electron's app.asar would shadow app/, so the rename is required.
+ *   (discord/injection.go, discord/assets/app_{index.js,package.json})
+ * - IsInjected (our is_patched): resources/app/index.js AND
+ *   resources/betterdiscord.app.asar both exist. The bare word
+ *   "betterdiscord" inside app.asar is NOT a marker — stock Discord mentions
+ *   it in Sentry denylists.
+ * - detect_install accepts EITHER app.asar or betterdiscord.app.asar
+ *   (mirrors upstream hasDiscordApp: an injected install has no app.asar,
+ *   and must still resolve for repair/uninstall decisions).
+ * - patch/unpatch shell out to the official BetterDiscord CLI
+ *   (`bdcli install|uninstall`), which is fully non-interactive for these
+ *   paths (cobra flags, errors returned — no prompts) and stops/restarts
+ *   Discord itself. Our trigger still quits first (same as Vencord flow).
+ * - bdcli channels are stable|ptb|canary only — ParseChannel silently maps
+ *   anything else to stable, so our `development` channel ALWAYS uses
+ *   --path <appPath> (ResolvePath accepts bundles). Never pass --channel
+ *   development.
  *
- * DRY-RUN ONLY: patch()/unpatch() never touch files; they return ok:false
- * with an explicit message. The trigger additionally forces check mode for
- * this mod, so even --force cannot live-patch until explicitly enabled.
+ * LIVE GATING (safety): these functions execute whatever they're asked.
+ * Dry-run-by-default and the --live + betterdiscordDryRun:false arming are
+ * enforced in the trigger (and the `autocord patch` wrapper), never here —
+ * same split as vencord.js (which never prompts because flags bypass it).
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const name = 'betterdiscord';
 
-const DRY_RUN_NOTICE =
-  'BetterDiscord live patching is not enabled (dry-run mode). ' +
-  'Nothing was changed. Re-run with the Vencord target for real patching.';
-
-function bdDataDir(homeDir = os.homedir()) {
-  return path.join(homeDir, 'Library', 'Application Support', 'BetterDiscord');
+// bdcli has no `development` channel (ParseChannel maps unknown → stable),
+// so development always resolves by explicit path. Mirrors the mutual
+// exclusivity in cmd/install.go and cmd/uninstall.go (--path XOR --channel).
+function bdTargetArgs(channel, installPath) {
+  if (channel === 'development') {
+    return ['--path', installPath];
+  }
+  return ['--channel', channel];
 }
 
-function loaderAsarPath(homeDir = os.homedir()) {
-  return path.join(bdDataDir(homeDir), 'data', 'betterdiscord.asar');
-}
-
-/** Marker scanned for inside the live app.asar (case-insensitive). */
-const LOADER_MARKER = 'betterdiscord.asar';
-const SCAN_BYTES = 8 * 1024 * 1024;
-
-function detect_install(channelInfo, opts = {}) {
+function detect_install(channelInfo) {
   if (!channelInfo.appPath || !channelInfo.resourcesDir) return null;
   try {
     const st = fs.statSync(channelInfo.appPath);
     if (!st.isDirectory()) return null;
     const res = fs.statSync(channelInfo.resourcesDir);
     if (!res.isDirectory()) return null;
-    if (!fs.existsSync(path.join(channelInfo.resourcesDir, 'app.asar'))) return null;
+    const hasApp = fs.existsSync(path.join(channelInfo.resourcesDir, 'app.asar'));
+    const hasPreserved = fs.existsSync(path.join(channelInfo.resourcesDir, 'betterdiscord.app.asar'));
+    if (!hasApp && !hasPreserved) return null;
     return channelInfo.appPath;
   } catch {
     return null;
   }
 }
 
-function appAsarReferencesLoader(resourcesDir, marker = LOADER_MARKER) {
-  let fd;
+function is_patched(installPath) {
+  // Mirrors upstream IsInjected: shadow entry + preserved original.
   try {
-    fd = fs.openSync(path.join(resourcesDir, 'app.asar'), 'r');
-    const st = fs.fstatSync(fd);
-    const len = Math.min(st.size, SCAN_BYTES);
-    const buf = Buffer.alloc(len);
-    fs.readSync(fd, buf, 0, len, 0);
-    return buf.toString('utf8').toLowerCase().includes(marker.toLowerCase());
+    return (
+      fs.existsSync(path.join(installPath, 'Contents', 'Resources', 'app', 'index.js')) ||
+      fs.existsSync(path.join(installPath, 'resources', 'app', 'index.js'))
+    ) && (
+      fs.existsSync(path.join(installPath, 'Contents', 'Resources', 'betterdiscord.app.asar')) ||
+      fs.existsSync(path.join(installPath, 'resources', 'betterdiscord.app.asar'))
+    );
   } catch {
     return false;
-  } finally {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch { /* ignore */ }
+  }
+}
+
+function resolveBdCli(explicit, pathEnv) {
+  if (explicit && isExecutable(explicit)) return explicit;
+  const dirs = (pathEnv !== undefined ? pathEnv : process.env.PATH || '').split(':');
+  for (const dir of dirs) {
+    if (!dir) continue;
+    for (const name of ['bdcli', 'betterdiscord-cli']) {
+      const full = path.join(dir, name);
+      if (isExecutable(full)) return full;
     }
   }
+  for (const home of [process.env.HOME, require('os').homedir()].filter(Boolean)) {
+    const full = path.join(home, 'bin', 'bdcli');
+    if (isExecutable(full)) return full;
+  }
+  return null;
 }
 
-function is_patched(installPath, opts = {}) {
-  const homeDir = opts.homeDir || os.homedir();
+function isExecutable(p) {
   try {
-    if (!fs.existsSync(loaderAsarPath(homeDir))) return false;
-    return appAsarReferencesLoader(path.join(installPath, 'Contents', 'Resources'));
+    fs.accessSync(p, fs.constants.X_OK);
+    return true;
   } catch {
     return false;
   }
 }
 
-function patch() {
-  return { ok: false, output: DRY_RUN_NOTICE };
+function runBdCli(cliPath, args, log) {
+  log.info(`Running: ${cliPath} ${args.join(' ')}`);
+  const r = spawnSync(cliPath, args, { encoding: 'utf8', timeout: 5 * 60 * 1000 });
+  const output = [r.stdout, r.stderr].filter(Boolean).join('\n').slice(-4000);
+  if (r.error) {
+    return { ok: false, output: `${output}\nspawn error: ${r.error.message}`.trim() };
+  }
+  return { ok: r.status === 0, output: output.trim() };
 }
 
-function unpatch() {
-  return { ok: false, output: DRY_RUN_NOTICE };
+function cliOrError(config) {
+  const found = resolveBdCli(config.betterdiscordCli);
+  if (found) return { cli: found };
+  return {
+    cli: null,
+    error:
+      'BetterDiscord CLI (bdcli) not found on PATH. Install it:\n' +
+      '  brew install betterdiscord/tap/bdcli   (macOS)' +
+      '  # or: npm install -g @betterdiscord/cli',
+  };
+}
+
+function patch(installPath, channel, config, log) {
+  const { cli, error } = cliOrError(config || {});
+  if (!cli) return { ok: false, output: error };
+  const res = runBdCli(cli, ['install', ...bdTargetArgs(channel, installPath)], log);
+  if (!res.ok) {
+    res.output = `betterdiscord install failed (exit != 0).\n${res.output}`;
+  }
+  return res;
+}
+
+function unpatch(installPath, channel, config, log) {
+  const { cli, error } = cliOrError(config || {});
+  if (!cli) return { ok: false, output: error };
+  // channel may be omitted by older callers; default to explicit path.
+  const target = channel ? bdTargetArgs(channel, installPath) : ['--path', installPath];
+  return runBdCli(cli, ['uninstall', ...target], log);
 }
 
 module.exports = {
@@ -102,8 +154,6 @@ module.exports = {
   is_patched,
   patch,
   unpatch,
-  DRY_RUN_NOTICE,
-  LOADER_MARKER,
-  bdDataDir,
-  loaderAsarPath,
+  bdTargetArgs,
+  resolveBdCli,
 };

@@ -8,6 +8,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const { loadConfig } = require('../src/config');
+const { resolveBdLive } = require('../src/trigger.js');
 const platform = require('../src/platform/darwin');
 const vencord = require('../src/mods/vencord');
 
@@ -68,6 +69,25 @@ describe('platform (darwin, live machine)', () => {
     for (const p of platform.getWatchPaths(info)) {
       assert.ok(fs.existsSync(p), `watch path exists: ${p}`);
     }
+  });
+});
+
+describe('betterdiscord live gate', () => {
+  it('resolveBdLive requires both --live and an armed config (AND)', () => {
+    assert.deepEqual(resolveBdLive({ live: false }, { betterdiscordDryRun: false }), { live: false, refused: null });
+    assert.deepEqual(resolveBdLive({ live: true }, { betterdiscordDryRun: true }).live, false);
+    const refused = resolveBdLive({ live: true }, { betterdiscordDryRun: true });
+    assert.match(refused.refused, /betterdiscordDryRun/);
+    assert.deepEqual(resolveBdLive({ live: true }, { betterdiscordDryRun: false }), { live: true, refused: null });
+  });
+
+  it('betterdiscordDryRun defaults true and rejects non-booleans', () => {
+    assert.equal(loadConfig('/nonexistent/path/config.json').betterdiscordDryRun, true);
+    const dir = require('os').tmpdir() + '/vap-cfg-' + Date.now();
+    require('fs').mkdirSync(dir, { recursive: true });
+    const f = dir + '/config.json';
+    require('fs').writeFileSync(f, JSON.stringify({ betterdiscordDryRun: 'yes' }));
+    assert.throws(() => loadConfig(f), /betterdiscordDryRun/);
   });
 });
 

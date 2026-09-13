@@ -95,6 +95,11 @@ describe('ui', () => {
     assert.match(out, /^ptb\s+● Patched$/);
   });
 
+  it('subtitle marks armed vs dry-run betterdiscord', () => {
+    assert.match(ui.subtitleForMod('betterdiscord', true), /LIVE ARMED/);
+    assert.match(ui.subtitleForMod('betterdiscord', false), /dry-run/);
+  });
+
   it('subtitle switches for betterdiscord dry-run', () => {
     assert.match(ui.subtitleForMod('betterdiscord'), /dry-run/);
     assert.ok(!/dry-run/.test(ui.subtitleForMod('vencord')));

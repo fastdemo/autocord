@@ -56,7 +56,7 @@ function helpBody() {
     `               ${ui.dim(`Run 'autocord config' first`)}`,
     cmd('uninstall', `Remove the LaunchAgent ('--purge' also removes config/state/logs)`),
     cmd('patch', 'Run a patch check once now ([--channel ptb] [--force]'),
-    `               ${ui.dim('[--dry-run] [--mod vencord])')}`,
+    `               ${ui.dim('[--dry-run] [--mod vencord] [--live for armed BetterDiscord])')}`,
     cmd('logs', 'Follow the autopatch log (tail -f)'),
     '',
     `Fresh setup:  ${ui.mint('autocord config')}  ${ui.dim(`${ui.ARROW}`)}  ${ui.mint('autocord install')}`,
@@ -100,15 +100,27 @@ function splitMod(argv) {
 }
 
 /**
- * Decide patch mode. Pure (unit-tested): BetterDiscord always dry-runs.
- * Returns { check, dryRun, forcedForMod }.
+ * Decide patch mode. Pure (unit-tested). BetterDiscord live requires BOTH
+ * --live on this invocation AND an armed config (betterdiscordDryRun:false);
+ * every other BD combination dry-runs. Returns
+ * { check, dryRun, live, forcedForMod, refused }.
  */
-function resolvePatchMode(modName, flags) {
+function resolvePatchMode(modName, flags, bdConfig = {}) {
+  const bdDryRun = bdConfig.betterdiscordDryRun !== false; // default true
   const explicitDry = Boolean(flags.dryRun || flags.check);
-  if (modName === 'betterdiscord') {
-    return { check: true, dryRun: true, forcedForMod: !explicitDry };
+  if (modName !== 'betterdiscord') {
+    return { check: explicitDry, dryRun: explicitDry, live: false, forcedForMod: false, refused: null };
   }
-  return { check: explicitDry, dryRun: explicitDry, forcedForMod: false };
+  if (flags.live && !bdDryRun) {
+    return { check: false, dryRun: false, live: true, forcedForMod: false, refused: null };
+  }
+  if (flags.live && bdDryRun) {
+    return {
+      check: false, dryRun: false, live: false, forcedForMod: false,
+      refused: 'Live BetterDiscord patching was requested (--live) but betterdiscordDryRun is not false in config. Flip it yourself with: autocord config --betterdiscord-dry-run false. Nothing was changed.',
+    };
+  }
+  return { check: true, dryRun: true, live: false, forcedForMod: !explicitDry, refused: null };
 }
 
 function runNode(script, args) {
@@ -150,18 +162,30 @@ function effectiveMod(configPath, modFlag) {
 
 function cmdPatch(args) {
   const { configPath, rest: noCfg } = splitConfig(args);
-  const { mod: modFlag, rest } = splitMod(noCfg);
+  const { mod: modFlag, rest: noMod } = splitMod(noCfg);
+  const live = noMod.includes('--live');
+  const rest = noMod.filter((a) => a !== '--live');
   const dryRun = rest.includes('--dry-run');
   const check = rest.includes('--check');
   const forwarded = rest.filter((a) => a !== '--dry-run');
   const modName = effectiveMod(configPath, modFlag);
-  const mode = resolvePatchMode(modName, { dryRun, check });
   if (modFlag && !['vencord', 'betterdiscord'].includes(modFlag)) {
     fail(`unknown mod '${modFlag}' (vencord, betterdiscord)`);
   }
+  let bdDryRun = true;
+  try {
+    bdDryRun = loadConfig(configPath).betterdiscordDryRun !== false;
+  } catch { /* missing config → trigger reports it */ }
+  const mode = resolvePatchMode(modName, { dryRun, check, live }, { betterdiscordDryRun: bdDryRun });
+  if (mode.refused) {
+    process.stderr.write(`autocord: ${mode.refused}\n`);
+    process.exit(1);
+  }
 
-  process.stdout.write(`${ui.appHeader(modName)}\n\n`);
-  if (mode.dryRun) {
+  process.stdout.write(`${ui.appHeader(modName, {}, modName === 'betterdiscord' && !bdDryRun)}\n\n`);
+  if (mode.live) {
+    process.stdout.write(`${ui.statusLine('patch', 'red', ui.red('LIVE BetterDiscord patch — real files will be modified'))}\n\n`);
+  } else if (mode.dryRun) {
     const why = mode.forcedForMod ? 'BetterDiscord is dry-run only — nothing will be touched' : 'dry run — nothing will be touched';
     process.stdout.write(`${ui.statusLine('patch', 'yellow', `${ui.yellow('Checking (dry run)…')}  ${ui.dim(why)}`)}\n\n`);
   } else {
@@ -170,13 +194,15 @@ function cmdPatch(args) {
   const finalArgs = [
     ...(configPath ? ['--config', configPath] : []),
     ...(modFlag ? ['--mod', modFlag] : []),
+    ...(live ? ['--live'] : []),
     ...(mode.check && !forwarded.includes('--check') ? ['--check'] : []),
     ...forwarded,
   ];
   const r = spawnSync(process.execPath, [TRIGGER, ...finalArgs], { stdio: 'inherit' });
   const code = r.status ?? 1;
   if (code === 0) {
-    process.stdout.write(`\n${ui.statusLine('patch', 'green', mode.dryRun ? ui.mint('Dry run complete') : ui.mint('Finished cleanly'))}\n`);
+    const done = mode.live ? 'Live patch complete' : mode.dryRun ? 'Dry run complete' : 'Finished cleanly';
+    process.stdout.write(`\n${ui.statusLine('patch', mode.live ? 'red' : 'green', mode.live ? ui.red(done) : ui.mint(done))}\n`);
   } else {
     process.stdout.write('\n' + ui.statusLine('patch', 'red', ui.red(`Failed (exit ${code}) — see above or run 'autocord logs'`)) + '\n');
   }
@@ -201,7 +227,7 @@ async function cmdInstall(args) {
     fail(`no config at ${cfg.configPath} — run 'autocord config' first.`);
   }
   const modName = cfg.mod || 'vencord';
-  process.stdout.write(`${ui.appHeader(modName)}\n\n`);
+  process.stdout.write(`${ui.appHeader(modName, {}, modName === 'betterdiscord' && cfg.betterdiscordDryRun === false)}\n\n`);
   process.stdout.write(`${ui.statusLine('setup', 'yellow', ui.yellow('Checking for updates…'))}\n`);
 
   // Installer CLI: found silently, else built with plain-language progress,
@@ -274,18 +300,23 @@ function cmdStatus(args) {
   if (rest.length > 0) fail(`autocord status takes no options (got: ${rest.join(' ')})`);
   const cfg = loadConfig(configPath);
   const modName = cfg.mod || 'vencord';
+  const bdArmed = modName === 'betterdiscord' && cfg.betterdiscordDryRun === false;
   const { data: state } = loadState(cfg.stateFile, cfg.legacyStateFile);
   const badge = installerBadge(cfg);
   const agentOk = isAgentLoaded();
 
   const out = [];
-  out.push(ui.appHeader(modName));
+  out.push(ui.appHeader(modName, {}, bdArmed));
   out.push('');
   out.push(ui.kvRows([
     ['config', `${cfg.configPath}${cfg.configExists ? '' : '  (missing — run `autocord config`)'}`],
     ['channels', cfg.channels.join(', ')],
     ['relaunch', String(cfg.relaunchDiscord)],
-    ['mod', modName === 'betterdiscord' ? `betterdiscord  ${ui.yellow('(dry-run mode — no files touched)')}` : modName],
+    ['mod', modName === 'betterdiscord'
+      ? (bdArmed
+        ? `betterdiscord  ${ui.red('(LIVE ARMED — real patching with per-run --live)')}`
+        : `betterdiscord  ${ui.yellow('(dry-run mode — no files touched)')}`)
+      : modName],
   ]));
   out.push('');
   for (const ch of cfg.channels) {

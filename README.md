@@ -206,7 +206,7 @@ State:
 
 ## Requirements
 
-* Node.js 18+
+* Node.js 22+
 * macOS (Windows port in progress — see above)
 * Discord (stable, PTB, Canary, and/or Development)
 

@@ -116,6 +116,12 @@ describe('win32 scheduler + notifier command builders', () => {
     assert.ok(script.includes("T''itle&lt;"), 'single-quote doubled + angle escaped');
     assert.ok(script.includes('&amp;'), 'ampersand escaped');
   });
+
+  it('toastScript is the exact payload buildToastArgs ships (CI executes this file)', () => {
+    const script = win32.toastScript('A', 'B');
+    assert.equal(win32.buildToastArgs('A', 'B').at(-1), script);
+    assert.ok(script.includes('ToastGeneric'));
+  });
 });
 
 describe('platform selector', () => {

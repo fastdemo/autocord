@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/fastdemo/autocord/main/install.sh | bash
 #
 # What it does:
-#   1. Checks for Node.js >= 18 (auto-installs via Homebrew on macOS when
+#   1. Checks for Node.js >= 22 (auto-installs via Homebrew on macOS when
 #      available, otherwise points at https://nodejs.org with copy-paste steps).
 #   2. Installs the CLI (npm global; falls back to git clone + local install
 #      if the registry step fails, e.g. offline or unpublished).
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 PKG="${AUTOCORD_NPM_PACKAGE:-autocord-cli}"
-MIN_NODE_MAJOR=18
+MIN_NODE_MAJOR=22
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 

@@ -42,7 +42,11 @@ function realNode() {
 const FAKE_NPM = (log) => `#!/bin/bash\necho "npm $@" >> "${log}"\nexit \${FAKE_NPM_EXIT:-0}\n`;
 
 describe('install.sh one-line installer', () => {
-  it('uses the npm package (override honored) then warns when autocord is missing from PATH', () => {
+  // install.sh is macOS/Linux bash: skip the execution branches on Windows
+  // (CI runs the suite there too). The syntax check is portable.
+  const onWin = process.platform === 'win32';
+  const maybe = onWin ? (...a) => it.skip(...a) : it;
+  maybe('uses the npm package (override honored) then warns when autocord is missing from PATH', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-inst-'));
     const log = path.join(dir, 'npm.log');
     const r = runInstall({
@@ -55,7 +59,7 @@ describe('install.sh one-line installer', () => {
     assert.match(r.stdout, /not on your PATH/);
   });
 
-  it('falls back to plain instructions when there is no terminal for config', () => {
+  maybe('falls back to plain instructions when there is no terminal for config', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-inst-'));
     const log = path.join(dir, 'npm.log');
     const r = runInstall({

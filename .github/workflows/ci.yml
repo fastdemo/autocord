@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm test
 
   windows-probe:
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: tasklist absent-case matches isDiscordRunning expectation
         run: |
@@ -69,8 +69,11 @@ jobs:
         if: always()
         run: schtasks /delete /tn "AutocordCIProbe" /f
 
-      - name: toast snippet executes (observational — headless may suppress)
+      - name: toast script parses (gate) then executes (observational)
         run: |
-          $toast = "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; $xml = New-Object Windows.Data.Xml.Dom.XmlDocument; $xml.LoadXml(\"<toast><visual><binding template='ToastGeneric'><text>Autocord CI</text><text>probe — safe to dismiss</text></binding></visual></toast>\"); [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Autocord').Show($xml);"
-          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $toast
+          node -e "require('fs').writeFileSync('toast-probe.ps1', require('./src/platform/win32.js').toastScript('Autocord CI','probe — safe to dismiss'))"
+          $errs = $null
+          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw toast-probe.ps1), [ref]$errs)
+          if ($errs.Count -ne 0) { throw "toast script has $($errs.Count) syntax errors" }
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File toast-probe.ps1
           echo "toast-exit=$LASTEXITCODE (nonzero on headless is a finding, not a failure)"

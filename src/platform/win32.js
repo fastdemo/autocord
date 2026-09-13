@@ -256,15 +256,20 @@ function maxMtimeMs(paths) {
   return max;
 }
 
-/** PowerShell one-liner args for an in-box WinRT toast. [DOCS-UNTESTED] */
-function buildToastArgs(title, message) {
+/** PowerShell source for an in-box WinRT toast. [DOCS-UNTESTED] */
+function toastScript(title, message) {
   const esc = (s) => String(s).replace(/'/g, "''").replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&(?!(lt|gt|amp);)/g, '&amp;');
-  const script =
+  return (
     `[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;` +
     `$xml = New-Object Windows.Data.Xml.Dom.XmlDocument;` +
     `$xml.LoadXml("<toast><visual><binding template='ToastGeneric'><text>${esc(title)}</text><text>${esc(message)}</text></binding></visual></toast>");` +
-    `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Autocord').Show($xml);`;
-  return ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script];
+    `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Autocord').Show($xml);`
+  );
+}
+
+/** PowerShell one-liner args for an in-box WinRT toast. [DOCS-UNTESTED] */
+function buildToastArgs(title, message) {
+  return ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', toastScript(title, message)];
 }
 
 /** [DOCS-UNTESTED] Best-effort notification; never throws. */
@@ -306,6 +311,7 @@ module.exports = {
   relaunchDiscord,
   maxMtimeMs,
   buildToastArgs,
+  toastScript,
   sendNotification,
   buildPollingTaskArgs,
 };

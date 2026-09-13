@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SAMPLE — do not load directly. scripts/install.sh generates the real plist at
+  ~/Library/LaunchAgents/com.vencord-autopatch.plist with WatchPaths computed
+  from your configured channels and absolute paths for node/trigger/config.
+
+  Design notes (validated on dev machine):
+  - Watch BOTH the live bundle (/Applications/<App>.app) and the support dir
+    (~/Library/Application Support/discord<channel>). macOS stages updates under
+    Application Support then ShipIt replaces the .app bundle; the patch target
+    app.asar lives in the bundle, so watching only one side misses updates.
+  - WatchPaths IS recursive on macOS (verified: deep writes fire).
+  - ThrottleInterval=0: default 10s coalescing would swallow rapid successive
+    update writes (verified). Debounce still happens in trigger.js.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vencord-autopatch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/khang/Documents/Coding/OpenCode/Autocord/src/trigger.js</string>
+    <string>--config</string>
+    <string>/Users/khang/.config/vencord-autopatch/config.json</string>
+  </array>
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/khang/Library/Application Support/discord</string>
+    <string>/Applications/Discord.app</string>
+  </array>
+  <key>ThrottleInterval</key>
+  <integer>0</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/khang/Library/Logs/vencord-autopatch/launchd.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/khang/Library/Logs/vencord-autopatch/launchd.stderr.log</string>
+</dict>
+</plist>

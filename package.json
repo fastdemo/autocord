@@ -1,0 +1,17 @@
+{
+  "name": "vencord-autopatch",
+  "version": "1.0.1",
+  "description": "Auto-reinstall Vencord on Discord updates (macOS, launchd)",
+  "type": "commonjs",
+  "bin": {
+    "autocord": "./bin/autocord.js",
+    "vencord-autopatch": "./src/trigger.js",
+    "vencord-autopatch-configure": "./src/configure.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

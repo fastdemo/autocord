@@ -1,0 +1,45 @@
+{
+  // Channels to watch. Valid values: "stable" | "ptb" | "canary" | "development".
+  // Default is stable-only per spec; add others if you run non-stable builds.
+  // Dev-machine note: only PTB (0.0.260) is installed here, stable dir is empty,
+  // so end-to-end testing on THIS machine needs ["ptb"].
+  "channels": ["stable"],
+
+  // Absolute path to the Vencord Installer CLI binary built with `go build --tags cli`.
+  // NOTE: upstream releases ship no prebuilt macOS CLI (only a GUI .app), so you
+  // must build it yourself: `brew install go && git clone github.com/Vencord/Installer
+  // && cd Installer && go build -tags cli -o VencordInstallerCli-darwin`.
+  // Tilde (~) is expanded.
+  "installerCli": "~/bin/VencordInstallerCli-darwin",
+
+  // How to select the Discord install non-interactively (bypasses PromptDiscord):
+  //   "location" -> `vencord-installer -install --location "<appPath>"` (default, most explicit)
+  //   "branch"   -> `vencord-installer -install --branch <channel>` (auto-picks per branch)
+  // Both were verified in cli.go to skip the interactive prompt entirely.
+  "installerMode": "location",
+
+  // If Discord is running, we quit it gracefully before patching (required:
+  // patching a running install can fail/corrupt app.asar). If true AND Discord
+  // was running before we quit it, relaunch it after a successful patch.
+  // If false, never relaunch (Discord stays quit).
+  "relaunchDiscord": false,
+
+  // Debounce: wait until no mtime changes under watch paths for this many
+  // seconds before acting (Discord writes many files over a few seconds).
+  "debounceSeconds": 10,
+
+  // Max time to wait for quiescence before giving up (seconds).
+  "debounceTimeoutSeconds": 120,
+
+  // Seconds to wait for Discord to quit gracefully before SIGKILL.
+  "quitTimeoutSeconds": 20,
+
+  // "debug" | "info" | "warn" | "error"
+  "logLevel": "info",
+
+  // Optional overrides (defaults shown). Tilde (~) is expanded.
+  // "stateFile": "~/.local/share/vencord-autopatch/state.json",
+  //   Legacy/alternate location still honored on read:
+  //   "~/Library/Application Support/vencord-autopatch/state.json"
+  // "logDir": "~/Library/Logs/vencord-autopatch"
+}

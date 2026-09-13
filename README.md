@@ -1,158 +1,88 @@
-# vencord-autopatch
+<img src="img/autocord512.png" width="128" height="128" alt="Autocord icon">
 
-Background tool for macOS that detects a Discord update and automatically
-re-patches Vencord — no manual re-install after every Discord auto-update.
+# Autocord
 
-Scope: **macOS + Vencord only**, with two deliberate extension hooks
-(mod target + platform layer) so BetterDiscord support and a Windows port
-are easy to bolt on later.
+Background tool for macOS that detects a Discord update and automatically re-patches Vencord — no manual re-install after every Discord auto-update.
 
-## How it works
+## Highlights
 
-1. A `launchd` LaunchAgent (`~/Library/LaunchAgents/com.vencord-autopatch.plist`)
-   uses `WatchPaths` on the Discord support dir(s) and the live `.app`
-   bundle(s), so the OS wakes the trigger on changes instead of polling.
-2. The trigger (`src/trigger.js`, plain Node, zero dependencies):
-   - **Debounces** — waits until no mtime changes under watch paths for
-     `debounceSeconds` (Discord writes many files over a few seconds).
-   - Detects the current version per channel and compares it against the
-     last successfully patched version in the state file (**idempotent** —
-     unchanged versions are skipped).
-   - Quits Discord gracefully if running, runs the Vencord installer CLI,
-     updates state, optionally relaunches, logs everything, and sends a
-     macOS notification on failure.
+Autocord is a lightweight CLI + background watcher that keeps your Discord client mod patched across updates. The sole purpose is whenever Discord auto-updates and wipes the patch, Autocord detects the new version and re-patches it automatically.
 
-## Validation findings (dev machine, please read)
+This only affects Discord. The rest of your computer remains intact.
 
-These were verified on the dev machine before coding, and the design
-depends on them:
+## Preview
 
-- **Patch target is the `.app` bundle, not the version folders.**
-  Live code: `/Applications/Discord*.app/Contents/Resources/app.asar`
-  (patched marker: sibling `_app.asar` — same semantics as upstream
-  `ParseDiscord()` in `find_discord_darwin.go`).
-  `~/Library/Application Support/discord*/app-<ver>/modules/` holds **only
-  native modules**, not `app.asar`. The task brief's claim that
-  `/Applications/Discord.app` "does not get replaced on every update" is
-  **wrong on macOS**: updates stage under `Application Support` and ShipIt
-  moves the new bundle over `/Applications/*.app` (see
-  `ShipIt_request.json`: `updateBundleURL=.../app-0.0.260/Discord PTB.app`
-  → `targetBundleURL=file:///Applications/Discord%20PTB.app/`).
-  **Therefore the agent watches BOTH locations.**
-- **No prompt hack needed.** The CLI's `PromptDiscord()` is skipped entirely
-  when `--location` or `--branch` is passed (verified in `cli.go`). Default
-  is `--location <appPath>` (most explicit); `--branch` is configurable.
-- **No prebuilt macOS CLI exists.** Releases ship a macOS GUI `.app` plus
-  Linux/Windows CLIs only. You must `brew install go` and
-  `go build -tags cli` (see Setup). This is the biggest setup cost.
-- **`WatchPaths` fires recursively** (verified: deep writes trigger), but
-  the default 10s `ThrottleInterval` coalesces rapid updates (verified) —
-  the plist sets `ThrottleInterval=0` and debouncing lives in the trigger.
-- **Dev machine state:** only Discord **PTB 0.0.260** is installed
-  (`/Applications/Discord PTB.app`); the stable support dir exists but is
-  nearly empty and no stable `.app` is installed. Default config is
-  `["stable"]` per spec — end-to-end testing on *this* machine needs
-  `["ptb"]`. The install is currently **unpatched** (stock 5-file
-  `app.asar`; the `vencord` strings inside are Discord's Sentry denylist,
-  not a patch).
+<img src="img/autocordthumb.png" width="720" alt="Autocord product thumbnail">
 
-## Setup
+## Features
 
-Prerequisites: macOS (Windows port in progress — see below), Node.js 18+.
+* **Update-proof Vencord**: A `launchd` agent watches both the live `.app` bundle and the Application Support folders (Discord replaces the bundle via ShipIt on every update), debounces the flurry of file writes, and re-patches only when the version actually changed.
+* **One command**: `autocord config`, `autocord install`, `autocord status`, `autocord logs`, `autocord patch` — a single surface over the watcher, trigger, and installer scripts.
+* **BetterDiscord dry-run**: BetterDiscord is a real selectable mod target, but patch runs for it only ever report what they *would* do — nothing is touched.
+* **Zero-setup installer handling**: The Vencord installer CLI has no prebuilt macOS binary, so Autocord finds it (known locations, then `$PATH`) or builds it from source automatically. You never learn Go is involved.
+* **Terminal-only**: Everything runs in your terminal and the background agent. No GUI, no system-wide changes.
+* **Lightweight**: Plain Node.js with zero dependencies. Just link it and forget it (until Discord updates, when you'll be glad you did).
 
-1. Clone the repo:
-```bash
-git clone https://github.com/fastdemo/autocord.git
-```
-2. Enter the directory:
-```bash
-cd autocord
-```
-3. Install dependencies:
-```bash
-npm install
-```
-4. Link the command:
-```bash
-npm link
-```
-5. Confirm it's working:
-```bash
-autocord --version
-```
-6. Configure and install:
+## Install
+
+1. Install Node.js:
+
+   ```bash
+   brew install node
+   ```
+
+2. Clone this repo:
+
+   ```bash
+   git clone https://github.com/fastdemo/autocord.git
+   ```
+
+3. Enter the folder and install:
+
+   ```bash
+   cd autocord
+   npm install
+   npm link
+   ```
+
+4. Make sure Autocord is installed:
+
+   ```bash
+   autocord --version
+   ```
+
+## Usage
+
+Set it up once:
+
 ```bash
 autocord config
 autocord install
 ```
 
-Day to day:
+Check on it later:
 
 ```bash
-autocord status     # config + agent loaded? + last patch result per channel
-autocord logs       # follow the autopatch log
-autocord help       # all commands, one line each
+autocord status
+autocord logs
 ```
 
-## Configuration
-
-`~/.config/vencord-autopatch/config.json` — the single config source. Either
-`autocord config` or hand-edit it (same file, no second source):
+Run a patch check by hand:
 
 ```bash
-autocord config                          # numbered prompts
-autocord config --config <path>          # alternate file (also honored
-                                         # via $VENCORD_AUTOPATCH_CONFIG)
-# Non-interactive (same code path, same file — good for scripting):
-autocord config --channels ptb --relaunch true --mod vencord
-autocord config --channels stable,ptb --relaunch false --mod betterdiscord
+autocord patch --dry-run --channel ptb
+autocord patch --force
 ```
 
-Prompts: 1) channel multi-select (`stable`/`ptb`/`canary`/`development`,
-numbers or names, comma-separated — matches the `channels: string[]`
-schema), 2) relaunch y/n, 3) mod target — Vencord, or BetterDiscord
-(**dry-run only**: reports what it would do, never touches files).
-Unknown/future keys in the file are preserved on save.
-
-No installer-path question: the CLI is auto-resolved (explicit override,
-then the standard build location `~/bin/VencordInstallerCli-darwin`, then
-`$PATH`). If none is found, `autocord config` / `autocord install` builds it
-from source automatically ("Setting up the Vencord installer (one-time)…");
-only if that build fails are you asked for a path in plain language.
-`--installer-cli` remains as a manual override.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `channels` | `["stable"]` | Which builds to watch: `stable`, `ptb`, `canary`, `development` |
-| `mod` | `"vencord"` | Mod target: `vencord` (live patching) or `betterdiscord` (**dry-run only** — detect + report, never patch) |
-| `installerCli` | `~/bin/VencordInstallerCli-darwin` | Manual override; normally auto-resolved (known locations → `$PATH` → auto-build from source) |
-| `installerMode` | `"location"` | `"location"` → `-install --location <appPath>`; `"branch"` → `-install --branch <channel>` |
-| `relaunchDiscord` | `false` | If true **and** Discord was running before patching, relaunch it after success |
-| `debounceSeconds` | `10` | Quiet period before acting |
-| `debounceTimeoutSeconds` | `120` | Give up waiting for quiet and proceed |
-| `quitTimeoutSeconds` | `20` | Graceful-quit wait before `pkill` |
-| `logLevel` | `"info"` | `debug`, `info`, `warn`, `error` |
-| `stateFile` | `~/.local/share/vencord-autopatch/state.json` | Last patched versions (legacy `~/Library/Application Support/vencord-autopatch/state.json` still read) |
-| `logDir` | `~/Library/Logs/vencord-autopatch` | Log destination |
-
-Channel → paths mapping (`src/platform/darwin.js`):
-
-| Channel | .app | Support dir |
-|---|---|---|
-| `stable` | `Discord.app` | `.../Application Support/discord` |
-| `ptb` | `Discord PTB.app` | `.../discordptb` |
-| `canary` | `Discord Canary.app` | `.../discordcanary` |
-| `development` | `Discord Development.app` | `.../discorddevelopment` |
-
-## Checking on it
+Normal Autocord arguments work too:
 
 ```bash
-autocord status     # config + agent loaded? + last patch result per channel
-autocord logs       # follow the log (tail -f, Ctrl-C to stop)
-autocord patch --dry-run --channel ptb   # full detect→decide, touches nothing
+autocord patch --channel ptb
+autocord patch --mod betterdiscord
+autocord config --channels stable,ptb --relaunch false
 ```
 
-Sample `autocord status` (monochrome plain-text output):
+Sample `autocord status`:
 
 ```
 ╭────────────────────────────────╮
@@ -170,128 +100,121 @@ installer  ● ready (VencordInstallerCli-darwin)
 agent      ● Not loaded  (run 'autocord install')
 ```
 
-With `mod: betterdiscord` the header reads `macOS · BetterDiscord ·
-dry-run mode`, status labels the mod row `(dry-run mode — no files
-touched)`, and every `patch` run is a dry run (even `--force`).
-
-Bump-test (fires the agent within seconds; watch `autocord logs` for a run):
+Bump-test the watcher (fires the agent within seconds; watch `autocord logs`):
 
 ```bash
 touch "$HOME/Library/Application Support/discord"
 ```
 
-## Manual / advanced usage (same tools `autocord` wraps)
+Advanced — the same tools `autocord` wraps, called directly:
 
 ```bash
-# Config file directly (what 'autocord config' writes):
 node src/configure.js --channels ptb --relaunch true
-
-# Trigger directly (what 'autocord patch' runs):
-node src/trigger.js --check --channel ptb   # dry run: no changes, no state write
-node src/trigger.js --force                  # real re-patch (quits Discord if running!)
-
-# Agent plumbing:
+node src/trigger.js --check --channel ptb
+node src/trigger.js --force
 launchctl list com.vencord-autopatch
-plutil -p ~/Library/LaunchAgents/com.vencord-autopatch.plist  # inspect WatchPaths
-tail -f ~/Library/Logs/vencord-autopatch/launchd.stderr.log
-bash scripts/install.sh    # what 'autocord install' runs (re-run after config edits
-                           # to regenerate WatchPaths)
-bash scripts/uninstall.sh  # what 'autocord uninstall' runs (--purge for everything)
 ```
 
-State file shape (`state.json`):
+## Configuration
 
-```json
-{ "version": 1, "patched": { "stable": {
-  "version": "0.0.3xx", "appPath": "/Applications/Discord.app",
-  "timestamp": "2026-09-13T...", "mod": "vencord" } } }
-```
-
-## Windows port (in progress)
-
-`src/platform/win32.js` implements the same interface as `darwin.js`
-(selected automatically in `src/platform/index.js`), so the trigger loop
-and mods are shared. Grounded in the Vencord Installer's own
-`find_discord_windows.go`:
-
-- Installs live at `%LOCALAPPDATA%\<Discord|DiscordPTB|DiscordCanary|DiscordDevelopment>\app-<ver>\resources\app.asar`
-  (patch marker: sibling `_app.asar`; newest `app-*` wins).
-- The Go CLI's `-install --location/--branch` flags are shared
-  cross-platform code (`cli.go`), so installer parity holds.
-- **Scheduler instead of launchd:** Task Scheduler has no filesystem-watch
-  trigger (`ONEVENT` only subscribes to Event Log channels), so Windows
-  polls — `schtasks /create /sc MINUTE /mo 30 /tn "Autocord Patch Check"`
-  running `node <repo>\src\trigger.js --config <config>` — which is correct
-  because the trigger is idempotent via the state file. See
-  `buildPollingTaskArgs()` for the exact command shape.
-
-Still needs one confirmation run on a real Windows box before calling it
-done: graceful `taskkill` behavior, `Update.exe --processStart` relaunch,
-and the WinRT toast notification (`sendNotification`). No Windows machine
-or VM was available for this pass — see the `DOCS-UNTESTED` markers in
-`src/platform/win32.js` for the exact list.
-
-## Tests
+Autocord creates its configuration at:
 
 ```bash
-npm test   # node --test, no dependencies; includes live-machine checks
+~/.config/vencord-autopatch/config.json
 ```
 
-## File layout
+Either `autocord config` (numbered prompts: channels, relaunch y/n, mod target) or hand-edit the file — same source, no second copy. Unknown keys are preserved on save.
 
-```
-bin/autocord.js           single CLI (help/config/status/install/uninstall/patch/logs)
-src/ui.js                 terminal styling: header box, ● dots, aligned columns (no deps)
-src/installer.js          installer CLI auto-resolve + one-time source build + manual fallback
-src/trigger.js            launchd entrypoint (debouce → detect → quit → patch → state)
-src/configure.js          interactive/flags configurator (writes the real config.json)
-src/config.js             config load + defaults + validation
-src/state.js              state file load/save (idempotency)
-src/logger.js             leveled file+stderr logger
-src/platform/darwin.js    PLATFORM LAYER: .app/support paths, version detect,
-                          running/quit/relaunch, WatchPaths, notifications
-src/mods/vencord.js       MOD TARGET: detect_install/is_patched/patch/unpatch
-src/mods/betterdiscord.js MOD TARGET (dry-run only): same interface, patch/unpatch refuse
-src/mods/index.js         mod registry (add a file + require line for future mods)
-launchd/*.plist.sample    sample plist (install.sh generates the real one)
-scripts/install.sh        generate plist from config + launchctl load
-scripts/uninstall.sh      unload + remove plist (--purge for config/state/logs)
-config.sample.json        documented default config
-test/trigger.test.js      unit + live-machine + dry-run tests
-```
+| Key | Default | Meaning |
+|---|---|---|
+| `channels` | `["stable"]` | Which builds to watch: `stable`, `ptb`, `canary`, `development` |
+| `mod` | `"vencord"` | `vencord` (live patching) or `betterdiscord` (**dry-run only**) |
+| `relaunchDiscord` | `false` | Relaunch Discord after a successful patch, if it was running |
+| `installerCli` | `~/bin/VencordInstallerCli-darwin` | Manual override; normally auto-resolved → auto-built |
+| `installerMode` | `"location"` | `-install --location <appPath>`, or `--branch <channel>` |
+| `debounceSeconds` | `10` | Quiet period before acting on filesystem changes |
+| `logLevel` | `"info"` | `debug`, `info`, `warn`, `error` |
 
-## Extensibility (hooks, not frameworks)
+Channel → paths mapping: `stable` → `Discord.app` + `.../Application Support/discord`, `ptb` → `Discord PTB.app` + `.../discordptb`, `canary` → `Discord Canary.app` + `.../discordcanary`, `development` → `Discord Development.app` + `.../discorddevelopment`.
 
-- **New mod (BetterDiscord):** write `src/mods/betterdiscord.js` exporting
-  `{ name, detect_install, is_patched, patch, unpatch }`, require it in
-  `src/mods/index.js`, run with `trigger.js --mod betterdiscord`.
-  Nothing in the watcher core changes.
-- **New OS (Windows):** add `src/platform/win32.js` with the same function
-  names as `darwin.js` (`getChannelInfo`, `getCurrentVersion`,
-  `getWatchPaths`, `isDiscordRunning`, `quitDiscord`, `relaunchDiscord`,
-  `maxMtimeMs`, `sendNotification`) and branch on `process.platform` in
-  `trigger.js`. Core loop stays untouched.
+State (last successfully patched version per channel) lives at `~/.local/share/vencord-autopatch/state.json`.
 
-## Known limitations
+## Troubleshooting
 
-- **Requires building the Go CLI yourself** (no upstream macOS CLI binary).
-  Until `installerCli` exists and is executable, every run fails loudly
-  (log + notification) by design.
-- **Discord must be quit to patch.** The trigger quits it via AppleScript
-  (`tell application ... to quit`) with a `pkill` fallback. Unsaved state
-  (e.g. an un-sent message draft) could be lost — same as manual patching.
-- **Relaunch is opt-in** (`relaunchDiscord=false` default): after an
-  unattended update Discord stays quit unless you enable it.
-- **No code signature handling.** Replacing `app.asar` inside a signed
-  `.app` works (Vencord's standard method), but a future Discord change to
-  integrity checks could break patching until the upstream installer adapts.
-- **Stable-only default.** Only the configured `channels` are watched;
-  running an unconfigured branch (e.g. Canary while only `stable` is set)
-  will never be patched. Re-run `install.sh` after changing channels.
-- **Single-flight lock, no queue.** Overlapping launchd wakes exit early;
-  the next wake (or `RunAtLoad` on login) picks up missed work via the
-  state file rather than queuing.
-- **Notifications are best-effort** (`terminal-notifier` if present, else
-  `osascript`); failures are always in the log even if the popup fails.
+* **`autocord: command not found`** → Make sure you ran `npm link` inside the Autocord folder.
+* **No config yet** → Run `autocord config` first; `autocord install` refuses without one.
+* **Installer missing** → Run `autocord install` — it builds the Vencord installer CLI from source automatically instead of asking you for a path.
+* **Discord must be quit to patch** → The trigger quits it gracefully first (`tell application … to quit`, `pkill` fallback). Unsaved state like an unsent draft can be lost — same as manual patching.
+* **Discord stayed closed after patching** → Relaunch is opt-in; set it with `autocord config --relaunch true`.
+* **Nothing happens on update** → Only configured `channels` are watched; re-run `autocord install` after changing channels to regenerate `WatchPaths`.
+* **Patch runs overlap** → Overlapping wakes exit early by design; the next wake (or login) picks up missed work from the state file.
+* **Something is behaving strangely** → Run `autocord status` and `autocord logs` to see versions, state, and the full log.
+
+## Windows
+
+`src/platform/win32.js` implements the same interface as `darwin.js` (auto-selected), so the trigger loop and mods are shared. Installs live at `%LOCALAPPDATA%\<Discord|DiscordPTB|DiscordCanary|DiscordDevelopment>\app-<ver>\resources\app.asar`, and Task Scheduler polls (`schtasks /create /sc MINUTE /mo 30`) since it has no filesystem-watch trigger. Still needs one confirmation run on a real Windows box (`taskkill` behavior, `Update.exe --processStart` relaunch, toast notification — see `DOCS-UNTESTED` markers).
+
+## Docs
+
+```bash
+npm test
 ```
 
+Runs the test suite for config, trigger, mods, installer resolution, CLI surface, and platform layers.
+
+The main source files are in `src/`:
+
+```text
+src/
+├── trigger.js
+├── configure.js
+├── installer.js
+├── ui.js
+├── config.js
+├── state.js
+├── logger.js
+├── mods/
+│   ├── vencord.js
+│   ├── betterdiscord.js
+│   └── index.js
+└── platform/
+    ├── darwin.js
+    ├── win32.js
+    └── index.js
+```
+
+Configuration:
+
+```text
+~/.config/vencord-autopatch/config.json
+```
+
+State:
+
+```text
+~/.local/share/vencord-autopatch/state.json
+```
+
+## Links
+
+* [Discord](https://discord.com/)
+* [Vencord](https://github.com/Vendicated/Vencord)
+* [Vencord Installer](https://github.com/Vencord/Installer)
+* [BetterDiscord](https://betterdiscord.app/)
+* [Autocord](https://github.com/fastdemo/autocord)
+
+## Requirements
+
+* Node.js 18+
+* macOS (Windows port in progress — see above)
+* Discord (stable, PTB, Canary, and/or Development)
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
+
+## Disclaimer
+
+Autocord is not affiliated with Discord, Vencord, or BetterDiscord. Patching a client mod can break when Discord ships changes *(and at your own risk, of course).* It's completely open-source and intended for personal use.
+
+Made with love by **@fastdemo** <3

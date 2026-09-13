@@ -1,12 +1,11 @@
 <img src="img/autocord512.png" width="128" height="128" alt="Autocord icon">
 
 # Autocord
-
-Background tool for macOS that repatches BetterDiscord or Vencord on every Discord update, so you don't have to manually install them every single time!
+Repatches BetterDiscord or Vencord on every Discord update, so you don't have to!
 
 ## Highlights
 
-Autocord is a lightweight CLI + background watcher that keeps your Discord client mod patched across updates. The sole purpose is whenever Discord auto-updates and wipes the patch, Autocord detects the new version and re-patches it automatically.
+Autocord is a lightweight CLI + background watcher that reinstalls BetterDiscord or Vencord after every update for your Discord client, automatically. Whenever Discord auto-updates and wipes the patch, Autocord detects the new version and re-patches it automatically.
 
 ## Preview
 

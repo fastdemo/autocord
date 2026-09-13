@@ -69,11 +69,12 @@ jobs:
         if: always()
         run: schtasks /delete /tn "AutocordCIProbe" /f
 
-      - name: toast script parses (gate) then executes (observational)
+      - name: toast script parses (5.1 gate) then executes (observational)
+        # NOTE: the WinRT `[..., ContentType = WindowsRuntime]` cast only parses
+        # under Windows PowerShell 5.1 (pwsh 7 rejects it) — which is exactly
+        # what our code shells out to, so gate with the same interpreter.
         run: |
           node -e "require('fs').writeFileSync('toast-probe.ps1', require('./src/platform/win32.js').toastScript('Autocord CI','probe — safe to dismiss'))"
-          $errs = $null
-          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw toast-probe.ps1), [ref]$errs)
-          if ($errs.Count -ne 0) { throw "toast script has $($errs.Count) syntax errors" }
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$e=$null; $t=[System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw toast-probe.ps1),[ref]$e); if ($e.Count -ne 0) { $e | Out-String | Write-Host; exit 1 }"
           powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File toast-probe.ps1
           echo "toast-exit=$LASTEXITCODE (nonzero on headless is a finding, not a failure)"

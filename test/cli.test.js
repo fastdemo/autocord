@@ -12,7 +12,11 @@ const AUTOCORD = path.join(REPO, 'bin', 'autocord.js');
 const { resolvePatchMode } = require('../bin/autocord.js');
 
 function run(...args) {
-  return spawnSync(process.execPath, [AUTOCORD, ...args], { encoding: 'utf8' });
+  return runEnv(args, process.env);
+}
+
+function runEnv(args, env) {
+  return spawnSync(process.execPath, [AUTOCORD, ...args], { encoding: 'utf8', env });
 }
 
 function tmpConfig(obj) {
@@ -156,8 +160,13 @@ describe('autocord install guards', () => {
     // missing-binary behavior incl. auto-build is covered in installer.test.js;
     // a live `install` success path is verified manually to avoid launchd
     // side effects in the suite.)
+    // Hermetic: fake installer on PATH so fallback is proven on any machine
+    // (clean CI runners have no real ~/bin binary).
+    const bindir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-cli-'));
+    fs.writeFileSync(path.join(bindir, 'VencordInstallerCli-darwin'), '#!/bin/sh\nexit 0\n');
+    fs.chmodSync(path.join(bindir, 'VencordInstallerCli-darwin'), 0o755);
     const p = tmpConfig({ channels: ['ptb'], installerCli: '/nonexistent/cli' });
-    const r = run('status', '--config', p);
+    const r = runEnv(['status', '--config', p], { ...process.env, PATH: `${bindir}:${process.env.PATH}` });
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     assert.match(r.stdout, /^installer\s+● ready\s+\(VencordInstallerCli-darwin\)/m);
   });
